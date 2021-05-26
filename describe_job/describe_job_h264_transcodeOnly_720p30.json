@@ -1,0 +1,24 @@
+{
+    "request": {
+        "name": "describe_job_h264_transcodeOnly_720p30",
+        "request_id": 1,
+        "parameters": {
+            "name": "testjob",
+            "resources": 
+            [
+                {
+                    "function": "DECODER",
+                    "format":   "H264",
+                    "resolution": { "input": { "width": 1280, "height": 720, "frame-rate": { "num":30, "den":1} } },
+                    "channel-load": 6 
+                },
+                {
+                    "function": "ENCODER",
+                    "format":   "H264",
+                    "resolution": { "input": { "width": 1280, "height": 720, "frame-rate": { "num":30, "den":1} } },
+                    "channel-load": 6
+                }
+            ]
+        }
+    }
+}

@@ -1,0 +1,2 @@
+job_description = /opt/xilinx/launcher/scripts/describe_job/describe_job_h264_transcodeOnly_720p60.json
+cmdline = ffmpeg -re -entropy_buffers_count 2 -low_latency 0 -c:v mpsoc_vcu_h264 -i -max_muxing_queue_size 1024 -b:v 4M -level 4.2 -bf 2 -scaling-list 0 -g 30 -c:v mpsoc_vcu_h264 -c:a copy -max_interleave_delta 0 -f mp4 -y /dev/null

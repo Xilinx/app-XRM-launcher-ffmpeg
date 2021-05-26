@@ -1,0 +1,38 @@
+{
+    "request": {
+        "name": "describe_job_h264_540p30to480p30",
+        "request_id": 1,
+        "parameters": {
+            "name": "testjob",
+            "job-count": 24,
+            "resources": 
+            [
+                {
+                    "function": "DECODER",
+                    "format":   "H264",
+                    "resolution": { "input": { "width": 960, "height": 540, "frame-rate": { "num":30, "den":1} } },
+                    "channel-load": 4  
+                },
+                {
+                    "function": "SCALER",
+                    "format":   "yuv420p",
+                    "resolution": 
+                    {
+                        "input": { "width": 960, "height": 540, "frame-rate": { "num":30, "den":1} },
+                        "output": 
+                        [
+                            { "width": 720, "height": 480, "frame-rate": { "num":30, "den":1} }
+                        ]
+                    },
+                    "channel-load": 4 
+                },
+                {
+                    "function": "ENCODER",
+                    "format":   "H264",
+                    "resolution": { "input": { "width": 720, "height": 480, "frame-rate": { "num":30, "den":1} } },
+                    "channel-load": 4
+                }
+            ]
+        }
+    }
+}

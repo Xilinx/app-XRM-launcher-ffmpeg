@@ -1,0 +1,2 @@
+job_description = /opt/xilinx/launcher/scripts/describe_job/describe_job_h264TOhevc_transcodeOnly_1080p60.json
+cmdline = ffmpeg -re -entropy_buffers_count 2 -low_latency 0 -c:v mpsoc_vcu_h264 -i -max_muxing_queue_size 1024 -b:v 4M -bf 2 -scaling-list 0 -c:v mpsoc_vcu_hevc -g 120 -qp-mode relative-load -spatial-aq 1 -temporal-aq 1 -lookahead_depth 20 -filler-data disable -c:a copy -max_interleave_delta 0 -f mp4 -y /dev/null

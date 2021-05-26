@@ -1,0 +1,18 @@
+{
+    "request": {
+        "name": "describe_job_h264_decoderOnly_720p60",
+        "request_id": 1,
+        "parameters": {
+            "name": "testjob",
+            "resources": 
+            [
+                {
+                    "function": "DECODER",
+                    "format":   "H264",
+                    "resolution": { "input": { "width": 1280, "height": 720 } },
+                    "frame-rate": 60 
+                }
+            ]
+        }
+    }
+}

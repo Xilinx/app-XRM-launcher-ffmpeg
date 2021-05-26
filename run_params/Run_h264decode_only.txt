@@ -1,0 +1,2 @@
+job_description = /opt/xilinx/launcher/scripts/describe_job/describe_job_h264_decode_only.json
+cmdline = ffmpeg -c:v mpsoc_vcu_h264 -i -vf xvbm_convert -f rawvideo -pix_fmt yuv420p -y /dev/null

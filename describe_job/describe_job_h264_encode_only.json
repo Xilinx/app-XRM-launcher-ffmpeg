@@ -1,0 +1,17 @@
+{
+    "request": {
+        "name": "describe_job_h264_encode_only",
+        "request_id": 1,
+        "parameters": {
+            "name": "testjob",
+            "resources": 
+            [
+                {
+                    "function": "ENCODER",
+                    "format":   "H264",
+                    "resolution": { "input": { "width": 1920, "height": 1080, "frame-rate": { "num":60, "den":1} } } 
+                }
+            ]
+        }
+    }
+}
