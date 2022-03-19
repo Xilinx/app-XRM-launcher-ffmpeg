@@ -1,0 +1,2 @@
+job_description = /opt/xilinx/launcher/scripts/describe_job/describe_job_h264_540p30to480p30.json
+cmdline = gst-launch-1.0 filesrc ! h265parse ! vvas_xvcudec num-entropy-buf=2 low-latency=false ! queue max-size-buffers=1 ! vvas_xabrscaler scale-mode=2 ! video/x-raw, width=720, height=480 ! queue max-size-buffers=1 ! vvas_xvcuenc target-bitrate=4000 max-bitrate=4000 b-frames=2 scaling-list=0 gop-length=30 ! h265parse  ! fpsdisplaysink video-sink="fakesink async=false" text-overlay=false fps-update-interval=5000 sync=false -v

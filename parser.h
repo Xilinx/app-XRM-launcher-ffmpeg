@@ -19,10 +19,14 @@
 
 #include <stdbool.h>
 #include </opt/xilinx/xrm/include/xrm.h>
+#include <errno.h>
 
 extern "C" {
 	#include <pthread.h>
 }
+
+#define MAX_XLNX_DEVS 128
+
 
 typedef enum PARSER_RET
 {
@@ -32,7 +36,15 @@ typedef enum PARSER_RET
 	PARSER_RET_ERROR
 } PARSER_RET;
 
+typedef struct xrm_dev_list
+{
+    int num_devs; 
+    int hw_dev_ids[MAX_XLNX_DEVS];
+    int vt_dev_ids[MAX_XLNX_DEVS];	
+    int dev_start_cuidx[MAX_XLNX_DEVS];	
+}xrm_dev_list;
+
 PARSER_RET get_line (int file, char* value);
-int fill_props (int file, xrmCuPoolProperty* props, char* cmdline);
+int fill_props (int file, xrmCuPoolPropertyV2* props, char* cmdline, xrm_dev_list* pop_dev_list);
 
 #endif /* _PARSER_H_ */

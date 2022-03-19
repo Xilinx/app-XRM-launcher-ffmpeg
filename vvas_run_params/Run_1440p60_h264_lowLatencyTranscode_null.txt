@@ -1,0 +1,2 @@
+job_description = /opt/xilinx/launcher/scripts/describe_job/describe_job_h264_transcodeOnly_1440p60.json
+cmdline = gst-launch-1.0 filesrc ! h264parse ! vvas_xvcudec num-entropy-buf=2 low-latency=false ! queue max-size-buffers=1 ! vvas_xvcuenc target-bitrate=4000 b-frames=2 scaling-list=0 gop-length=30 ! h264parse  ! fpsdisplaysink video-sink="fakesink async=false" text-overlay=false fps-update-interval=5000 sync=false -v

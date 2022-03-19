@@ -1,0 +1,2 @@
+job_description = /opt/xilinx/launcher/scripts/describe_job/describe_job_h264_decode_only.json
+cmdline = gst-launch-1.0 filesrc ! h265parse ! vvas_xvcudec ! queue max-size-buffers=1 ! fpsdisplaysink video-sink="fakesink async=false" text-overlay=false fps-update-interval=5000 sync=false -v

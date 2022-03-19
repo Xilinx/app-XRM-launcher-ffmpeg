@@ -14,7 +14,25 @@
 # under the License.
 
 cmake_minimum_required(VERSION 2.8.11)
-project(launcher)
+set(LAUNCHER_PROJ "xilinx-u30-launcher")
+set(LAUNCHER_BINARY_NAME "launcher")
+set(LAUNCHER_VERSION "1.1.0")
+
+find_program(UNAME_EXEC uname)
+find_program(LSB_RELEASE_EXEC lsb_release)
+
+# Grab Arch information like x86-64
+execute_process(COMMAND ${UNAME_EXEC} -p
+    OUTPUT_VARIABLE UNAME_ARCHTYPE
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+# Grab OS release short name
+execute_process(COMMAND ${LSB_RELEASE_EXEC} -rs
+	OUTPUT_VARIABLE LSB_RELEASE_REL_SHORT
+	OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+set(LAUNCHER_PROJ_FULL_NAME "${LAUNCHER_PROJ}_${LAUNCHER_VERSION}_${LSB_RELEASE_REL_SHORT}-${UNAME_ARCHTYPE}")
+
+project(${LAUNCHER_PROJ})
 
 # Linking variables
 find_package(PkgConfig REQUIRED)
@@ -25,9 +43,18 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/describe_job/
         USE_SOURCE_PERMISSIONS
         DESTINATION ${CMAKE_INSTALL_PREFIX}/scripts/describe_job)
 
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/vvas_only_describe_job/
+        USE_SOURCE_PERMISSIONS
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/scripts/vvas_only_describe_job)
+
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/run_params/
         USE_SOURCE_PERMISSIONS
         DESTINATION ${CMAKE_INSTALL_PREFIX}/scripts/run_params)
+
+# VVAS GStreamer commands for launcher
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/vvas_run_params/
+	USE_SOURCE_PERMISSIONS
+	DESTINATION ${CMAKE_INSTALL_PREFIX}/scripts/vvas_run_params)
 
 find_package(Threads REQUIRED)
 
@@ -40,29 +67,30 @@ find_package(Boost COMPONENTS thread)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_CXX_FLAGS	"${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wextra -O1 -g  -DDSA64 -fpermissive")
+set(CMAKE_CXX_FLAGS	"${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wextra -DDSA64 -fpermissive")
 
-add_executable(${PROJECT_NAME} parser.cpp worker.cpp)
+add_executable(${LAUNCHER_BINARY_NAME} parser.cpp worker.cpp)
 
-target_compile_options(${PROJECT_NAME} PUBLIC ${LIBXRM_CFLAGS} "-pthread")
+target_compile_options(${LAUNCHER_BINARY_NAME} PUBLIC ${LIBXRM_CFLAGS} "-pthread")
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${LIBXRM_INCLUDE_DIRS})
+target_include_directories(${LAUNCHER_BINARY_NAME} PUBLIC ${LIBXRM_INCLUDE_DIRS})
 
-target_link_libraries(${PROJECT_NAME} ${LIBXRM_LDFLAGS} 
+target_link_libraries(${LAUNCHER_BINARY_NAME} ${LIBXRM_LDFLAGS}
   		      ${Boost_THREAD_LIBRARY}
 		      ${CMAKE_THREAD_LIBS_INIT})
 
 # Set the location for library installation
-install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+install(TARGETS ${LAUNCHER_BINARY_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 
 # Packaging section
-set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
-set(CPACK_PACKAGE_VERSION "1.0.0")
+set(CPACK_PACKAGE_NAME ${LAUNCHER_PROJ})
+set(CPACK_PACKAGE_VERSION ${LAUNCHER_VERSION})
+set(CPACK_PACKAGE_FILE_NAME ${LAUNCHER_PROJ_FULL_NAME})
 set(CPACK_PACKAGE_CONTACT "Rohit Athavale <rohit.athavale@xilinx.com>")
 set(CPACK_PACKAGE_VENDOR "Xilinx")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Xilinx Worker/Launcher")
 set(CPACK_PACKAGE_DESCRIPTION "The Xilinx Worker/Launcher for starting FFmpeg commands using XRM.")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "xrm (>= 1.2.1157), libboost-thread-dev ")
-set(CPACK_RPM_PACKAGE_DEPENDS "xrm >= 1.2.1157, libboost-thread1.58.0 ")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "xrm (>= 1.3), libboost-thread-dev ")
+set(CPACK_RPM_PACKAGE_DEPENDS "xrm (>= 1.3), libboost-thread1.58.0 ")
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/opt" "/opt/xilinx" "/usr/lib" "/usr/lib/pkgconfig")
 include(CPack)

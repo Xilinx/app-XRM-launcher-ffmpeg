@@ -121,7 +121,7 @@ int separate_cmdline (char* cmdline, char* cmd_params[256])
         if (in_single_quote || in_double_quote)
         {
             // error if we reached the end of the command line and are still in a quote
-            printf("command line error!\n");
+            fprintf (stderr, "command line error!\n");
             return -1;
         }
         cmdline[param_index] = '\0';
@@ -148,13 +148,87 @@ static int insert_out_file_with_ch(char *ch_str, char *run_cmd, char *org_out_fi
     return 0;
 }
 
-int prepare_ffmpeg_run_cmd(char* source_filename, char *ch_str, char *run_cmd) {
+static int first_occurance_idx(const char* src_string, const char* match_word)
+{
+    int slen = strlen(src_string);
+
+    for (int i=0; i<slen; i++)
+    {
+        if(strstr(&src_string[i],match_word) == &src_string[i])			
+        {
+           return i;			
+        }
+    }	
+    return -1;
+}
+
+static char* replace_scl_hwdev(const char* str, xrm_dev_list* pop_dev_list)
+{
+    char orig[256] = {};
+    char mod[256] = {};
+    char pre_mod[1024] = {};
+    char post_mod[1024] = {};
+    char *result = (char*)calloc(1, 4096);
+    char *endptr;
+	
+    int i = 0, olen= 0, vt_id = 0, hw_id= 0;   
+    errno =0;	
+
+    i = first_occurance_idx(str,"lxlnx_hwdev");
+    if (i>= 0)
+    {
+       strncpy(pre_mod,&str[0],i);
+       strcpy(post_mod,&str[i]);
+    }
+
+    i= first_occurance_idx(post_mod,":");
+    if (i>= 0)
+    {	
+       strncpy(orig,post_mod,i);
+       olen = strlen(orig);
+
+       if (strstr(orig,"lxlnx_hwdev="))
+       {
+          strcpy(mod,&orig[strlen("lxlnx_hwdev=")]);
+          vt_id = (int) strtol(mod, &endptr, 0);
+
+          //check for strtol errors
+          if (errno != 0)
+          {
+              perror("strtol");
+              exit(0);
+          }
+
+          if (vt_id > -1)
+             hw_id = pop_dev_list->hw_dev_ids[vt_id];
+         
+          sprintf(result,"%slxlnx_hwdev=%d",pre_mod,hw_id);
+          strcat(result,&post_mod[olen]);
+       }
+    }
+    return result;
+}
+
+int prepare_ffmpeg_run_cmd(char* source_filename, char *ch_str, char *run_cmd, xrm_dev_list* pop_dev_list) {
 
     char *word = strtok (NULL, " ");
+    int i=0, tmp=0;	
+    char s_dev[128];
+    char * pch, *endptr;
+
+    memset (s_dev,0,sizeof(s_dev));
+
+
     while (word != NULL)
     {
-        strcat(run_cmd," ");
-        strcat(run_cmd, word);
+        errno = 0;
+        pch = strstr(word,"lxlnx_hwdev=");
+        if (pch==NULL)
+        {	  
+            strcat(run_cmd," ");
+            strcat(run_cmd, word);
+        }  
+
         if (strcmp(word,"-y")==0)
         {
           word = strtok (NULL, " ");
@@ -167,10 +241,35 @@ int prepare_ffmpeg_run_cmd(char* source_filename, char *ch_str, char *run_cmd) {
           if (strcmp(word, "-i")==0)
           {
               strcat(run_cmd, " ");
-              strcat(run_cmd, source_filename);
+              strcat(run_cmd, source_filename);		  
           }
-       }
+          else if(strcmp(word,"-lxlnx_hwdev") == 0)
+          {
+              word = strtok (NULL, " ");
+              tmp = (int) strtol(word, &endptr, 0);
 
+              //check for strtol errors
+              if (errno != 0)
+              {
+                 perror("strtol");
+                 return -1;
+              }
+
+              if (tmp < 0)  return -1;
+
+              strcat(run_cmd, " ");
+              sprintf(s_dev," %d", pop_dev_list->hw_dev_ids[tmp]);
+              strcat(run_cmd, s_dev);		  
+          }
+          if (pch != NULL)
+          {
+              char* str1;
+              str1=replace_scl_hwdev(word,pop_dev_list);
+              strcat(run_cmd," ");
+              strcat(run_cmd, str1);
+              free(str1);
+          }		  
+       }  
        word = strtok (NULL, " ");
     }
     return 0;
@@ -178,9 +277,9 @@ int prepare_ffmpeg_run_cmd(char* source_filename, char *ch_str, char *run_cmd) {
 
 int prepare_mpsoc_app_run_cmd(char* source_filename, char *ch_str, char *run_cmd) {
     char *ch_params = NULL;
-    char *out_file = NULL;
-    // Copy dec.txt
+    char *out_file = NULL;    
     char *word = strtok (NULL, " ");
+
     if (word == NULL) {
         return -1;
     }
@@ -214,27 +313,116 @@ int prepare_mpsoc_app_run_cmd(char* source_filename, char *ch_str, char *run_cmd
     return 0;
 }
 
+int prepare_gst_run_cmd(char* source_filename, char *ch_str, char *run_cmd, xrm_dev_list* pop_dev_list) {
+    int sink_count = 0;
+    int tmp=0;
+    char s_dev[128];
+
+    char *word = strtok (NULL, " ");
+    while (word != NULL)
+    {
+        char *fileout;
+        strcat(run_cmd," ");
+        strcat(run_cmd, word);
+
+        if (strstr(word,"filesink"))
+        {
+            word = strtok (NULL, " ");
+            strcat(run_cmd," ");
+
+            if (strncmp(word,"location=", 9)==0) {
+                char *tmp = word+8;
+                strcat(run_cmd,"location=");
+                /* skipping white spaces & equal symbol */
+                while (*tmp == ' ' || *tmp == '=') {
+                    tmp++;
+                    continue;
+                }
+                insert_out_file_with_ch (ch_str, run_cmd, tmp);
+            }
+        }
+        else
+        {
+            if (strcmp(word, "filesrc")==0)
+            {
+                strcat(run_cmd, " ");
+                strcat(run_cmd, "location=");
+                strcat(run_cmd, source_filename);
+                strcat(run_cmd, " ");
+	    }
+            else if (strcmp(word, "fpsdisplaysink") == 0)
+            {
+                char sink_name[1024];
+                sprintf (sink_name, "fpsdisplaysink_%s_%d",ch_str, sink_count);
+                strcat(run_cmd, " ");
+                strcat(run_cmd, "name=");
+                strcat(run_cmd, sink_name);
+                sink_count++;
+                while(1) {
+                    char *ptr;
+                    ptr = strtok(NULL, " ");
+                    if (!ptr) break;
+                    strcat(run_cmd, " ");
+                    if (strstr(ptr, "name=")) {
+                        sprintf(sink_name, "%s_%s", ptr, ch_str);
+                        strcat(run_cmd, sink_name);
+                    } else {
+                      strcat(run_cmd, ptr);
+                    }
+                    if (strstr(ptr, "!")) {
+                       break;
+                    }
+                }
+            }
+	    else if(strncmp(word,"dev-idx=", 8) == 0)
+            {
+	      sscanf(word, "dev-idx=%d",&tmp);
+
+              sprintf(s_dev,"%d", pop_dev_list->hw_dev_ids[tmp]);
+	      *(run_cmd + (strlen(run_cmd) - 1)) = '\0';
+              strcat(run_cmd, s_dev);
+            }
+        }
+        word = strtok (NULL, " ");
+    }
+    return 0;
+}
+
 // allocate resources, launch a process, wait for it to end, then release the allocated resources
-int launch (int pipefd, char* source_filename, xrmCuPoolProperty* xrm_transcode_cu_pool_prop, char* pre_src_cmdline, int log_en)
+int launch (int pipefd, char* source_filename, xrmCuPoolPropertyV2* xrm_transcode_cu_pool_prop, xrm_dev_list* pop_dev_list, char* pre_src_cmdline, int log_en)
 {
+    xrmCuListResInforV2* cuListResInfor;
+    xrmCuPoolResInforV2* xrm_transcode_cu_pool_res;
+    xrmCuResInforV2* cuResInfor;
+	
     // initialize
     xrmContext *ctx = (xrmContext *)xrmCreateContext(XRM_API_VERSION_1);
     if (ctx == NULL)
     {
-       printf ("Create context failed\n");
+       fprintf (stderr, "Create context failed\n");
        return -1;
     }
-
+    xrm_transcode_cu_pool_res = (xrmCuPoolResInforV2*)malloc(sizeof(xrmCuPoolResInforV2));
+    memset(xrm_transcode_cu_pool_res, 0, sizeof(xrmCuPoolResInforV2));
+	
     // allocate resources
-    uint64_t reservation_id = xrmCuPoolReserve(ctx, xrm_transcode_cu_pool_prop);
+    uint64_t reservation_id = xrmCuPoolReserveV2(ctx, xrm_transcode_cu_pool_prop, xrm_transcode_cu_pool_res);
     if (reservation_id == 0)
     {
-        printf("xrmCuPoolReserve: fail to reserve transcode cu pool :%lu\n",reservation_id);
+        fprintf (stderr, "xrmCuPoolReserve: fail to reserve transcode cu pool :%lu\n",reservation_id);
         if (ctx)
             xrmDestroyContext(ctx);
 	return -1;
     }
-
+	
+    for (int i=0; i<pop_dev_list->num_devs; i++)
+    {
+        cuListResInfor = &(xrm_transcode_cu_pool_res->cuListResInfor[0]);
+        cuResInfor = &( cuListResInfor->cuResInfor[pop_dev_list->dev_start_cuidx[pop_dev_list->vt_dev_ids[i]]]);
+		
+        pop_dev_list->hw_dev_ids[pop_dev_list->vt_dev_ids[i]] = cuResInfor->deviceId;
+    }
+		
     // send signal to parent process that allocation is complete
     char buf = '\0';
     (void) !write (pipefd, &buf, 1);
@@ -246,7 +434,7 @@ int launch (int pipefd, char* source_filename, xrmCuPoolProperty* xrm_transcode_
 
     setenv ("XRM_RESERVE_ID", alloc_reservation_id, 1);
     if (log_en == 1)
-       printf("xrm_reservation_id =%lu \n",reservation_id);
+       fprintf (stderr, "xrm_reservation_id =%lu \n",reservation_id);
 
     // write console output to seperate log files with '-enable-logging' option 
     int file_out = -1; 
@@ -260,7 +448,7 @@ int launch (int pipefd, char* source_filename, xrmCuPoolProperty* xrm_transcode_
           ret = mkdir("/var/tmp/xilinx",0777); 
           if (ret != 0) 
           { 
-            printf("Couldn't create /var/tmp/xilinx folder to write logs. Err = %s", strerror(errno));
+            fprintf (stderr, "Couldn't create /var/tmp/xilinx folder to write logs. Err = %s", strerror(errno));
             return EXIT_FAILURE; 
           }         
        } 
@@ -279,17 +467,17 @@ int launch (int pipefd, char* source_filename, xrmCuPoolProperty* xrm_transcode_
 	    if(xrmCuPoolRelinquish (ctx, reservation_id))
      	    {
                 if (log_en == 1)
-                    printf("xrmCuPoolRelinquish = %lu\n",reservation_id);
+                    fprintf (stderr, "xrmCuPoolRelinquish = %lu\n",reservation_id);
         	if(xrmDestroyContext(ctx) != XRM_SUCCESS)
-          	    printf("XRM destroy context failed! %lu\n",reservation_id);
+          	    fprintf (stderr, "XRM destroy context failed! %lu\n",reservation_id);
             }
 	}
 	else
 	{
             if(!ctx)
-		printf("Null XRM context. xrmCuPoolRelinquish & xrmDestroyContext failed!\n");
+		fprintf (stderr, "Null XRM context. xrmCuPoolRelinquish & xrmDestroyContext failed!\n");
 	    else		
-		printf("Null reservation id. xrmCuPoolRelinquish failed!\n");
+		fprintf (stderr, "Null reservation id. xrmCuPoolRelinquish failed!\n");
 	}
         return -1;
     }
@@ -309,16 +497,17 @@ int launch (int pipefd, char* source_filename, xrmCuPoolProperty* xrm_transcode_
 
     word =strtok(cpy_pre_out_cmdline, " ");
     strcpy(cmdline_test,word);
+
     if (strstr(word, "ffmpeg") != NULL) {
-        prepare_ffmpeg_run_cmd(source_filename, c_id, cmdline_test);
+        prepare_ffmpeg_run_cmd(source_filename, c_id, cmdline_test, pop_dev_list);
     } else if (strstr(word, "mpsoc_app") != NULL) {
         prepare_mpsoc_app_run_cmd(source_filename, c_id, cmdline_test);
+    } else if (strstr(word, "gst-launch-1.0") != NULL) {
+        prepare_gst_run_cmd(source_filename, c_id, cmdline_test, pop_dev_list);
     } else {
-        printf("Error : Unknown Executable %s\n", word);
+        fprintf (stderr, "Error : Unknown Executable %s\n", word);
         return -1;
     }
-
-     //printf("command:\n%s\n",cmdline_test);
 
      // separate command line into array of arguments
      char* cmd_params[256];
@@ -336,11 +525,11 @@ int launch (int pipefd, char* source_filename, xrmCuPoolProperty* xrm_transcode_
     if (log_en == 1) 
     { 
        if (dup2(file_out, 0) < 0)
-          printf("LOG_INFO: Unable to copy log file descriptor to stdin\n"); 
+          fprintf (stderr, "Unable to copy log file descriptor to stdin\n"); 
        if (dup2(file_out, 1) < 0)
-          printf("LOG_INFO: Unable to copy log file descriptor to stdout\n"); 
+          fprintf (stderr, "Unable to copy log file descriptor to stdout\n"); 
        if (dup2(file_out, 2) < 0)
-          printf("LOG_INFO: Unable to copy log file descriptor to stderr\n");  
+          fprintf (stderr, "Unable to copy log file descriptor to stderr\n");  
  
        close (file_out); 
     } 
@@ -348,24 +537,24 @@ int launch (int pipefd, char* source_filename, xrmCuPoolProperty* xrm_transcode_
     // execute command
     if (execvp (cmd, cmd_params) != 0)
     {
-        printf("somthing is wrong (%s)\nffmpeg failed\n", strerror(errno));
+        fprintf (stderr, "Error when trying to execvp() : (%s)\nffmpeg failed\n", strerror(errno));
         //exit(1);//if want to exit when there is a error
     }
 
-        return 0;
+    return 0;
     }
 
     // wait for child to finish
     int wstatus;
     waitpid (pid, &wstatus, 0);
     // release resources
-    if(xrmCuPoolRelinquish (ctx, reservation_id))
+    if(xrmCuPoolRelinquishV2 (ctx, reservation_id))
     {
        if (log_en == 1)
-          printf("------------xrmCuPoolRelinquish =%lu\n",reservation_id);
+          fprintf (stderr, "------------xrmCuPoolRelinquish =%lu\n",reservation_id);
 
        if(xrmDestroyContext(ctx) != XRM_SUCCESS)
-         printf("XRM destroy context failed! %lu\n",reservation_id);
+         fprintf (stderr, "XRM destroy context failed! %lu\n",reservation_id);
     }
     
     if (WIFEXITED(wstatus))
@@ -378,16 +567,19 @@ int main (int argc, char *argv[])
 {
     struct termios terminfo;
     bool got_term_attr;
-    int sys_ret;
+    int sys_ret, ret=-1;
     int log_en = 0;
     const char *opt_log = "-enable-logging";
+    xrm_dev_list pop_dev_list;
 
+    memset(&pop_dev_list, 0, sizeof(pop_dev_list));
+	
     if (argc < 3)
     {
-        printf ("Usage:\n");
-        printf ("      %s <source files file name> <cmdline  file name> \n\n", argv[0]);
-        printf ("Usage with logging:\n");
-        printf ("      %s <source files file name> <cmdline  file name> %s \n\n", argv[0], opt_log);
+        fprintf (stderr, "Usage:\n");
+        fprintf (stderr, "      %s <source files file name> <cmdline  file name> \n\n", argv[0]);
+        fprintf (stderr, "Usage with logging:\n");
+        fprintf (stderr, "      %s <source files file name> <cmdline  file name> %s \n\n", argv[0], opt_log);
         return -1;
     }
     
@@ -407,21 +599,28 @@ int main (int argc, char *argv[])
     xrmContext *ctx = (xrmContext *)xrmCreateContext(XRM_API_VERSION_1);
     if (ctx == NULL)
     {
-       printf ("Create context failed\n");
+       fprintf (stderr, "Create context failed\n");
        return -1;
     }
 
-    xrmCuPoolProperty xrm_transcode_cu_pool_prop;
+    xrmCuPoolPropertyV2 xrm_transcode_cu_pool_prop;
     memset(&xrm_transcode_cu_pool_prop, 0, sizeof(xrm_transcode_cu_pool_prop));
 
     // get properties and command line from parameter file
     int param_file = open (argv[2], O_RDONLY);
     char pre_src_cmdline[4096];
-    if (fill_props (param_file, &xrm_transcode_cu_pool_prop, pre_src_cmdline) != 0)
+
+    if (fill_props (param_file, &xrm_transcode_cu_pool_prop, pre_src_cmdline, &pop_dev_list) != 0)
     {
-        printf("Failed to run given %s run command.\n", argv[2]);
+        fprintf (stderr, "Failed to run given %s run command.\n", argv[2]);
         return -1;
     }
+
+   /*for (int k=0; k<pop_dev_list.num_devs; k++)
+   {
+       printf("id=%d vt_dev=%d\n",k,pop_dev_list.vt_dev_ids[k]);
+   }*/
+	
     close (param_file);
 
     int sources_file = open (argv[1], O_RDONLY);
@@ -433,9 +632,6 @@ int main (int argc, char *argv[])
     int running_procs = 0;
     int wait = 0;
 
-    //char** failed_filenames = (char**)malloc (sizeof(char*) * MAX_ERRORS);
-    //memset (failed_filenames, 0, sizeof(failed_filenames));
-
     char** failed_filenames = (char**)calloc (MAX_ERRORS, sizeof(char*));
     int failed_sources = 0;
     int succeeded_sources = 0;
@@ -444,12 +640,12 @@ int main (int argc, char *argv[])
 
     int done = 0;
     int worker = 1;
-    int ret = -1;
-    printf("\n===================================================================\n");
-    printf("Launching processes started :");
+    ret = -1;
+    fprintf (stderr, "\n===================================================================\n");
+    fprintf (stderr, "Launching processes started :");
     if (log_en == 1)
-       printf("\nLog files per process are written to /var/tmp/xilinx using reservation id.");
-    printf("\n===================================================================\n");
+       fprintf (stderr, "\nLog files per process are written to /var/tmp/xilinx using reservation id.");
+    fprintf (stderr, "\n===================================================================\n");
 
     do
     {
@@ -462,7 +658,7 @@ int main (int argc, char *argv[])
                 ret = 0;
                 break;
             case PARSER_RET_ERROR:
-                printf("Reading source files failed!\n");
+                fprintf (stderr, "Reading source files failed!\n");
                 done = 1;
                 ret = -1;
                 break;
@@ -473,16 +669,17 @@ int main (int argc, char *argv[])
                 if (strlen(filename) == 0)
                     break;
 
-                //printf("Number of slots= %d---------\n",xrmCheckCuPoolAvailableNum(ctx, &xrm_transcode_cu_pool_prop));
+                printf("\nNumber of slots= %d\n",xrmCheckCuPoolAvailableNumV2(ctx, &xrm_transcode_cu_pool_prop));
+
                 // wait until resources are available
-                while (xrmCheckCuPoolAvailableNum(ctx, &xrm_transcode_cu_pool_prop) == 0)
+                while (xrmCheckCuPoolAvailableNumV2(ctx, &xrm_transcode_cu_pool_prop) == 0)
                 {
                     if (wait == 0)
                     {
                        wait = 1;
-                       printf("\n===================================================================\n");
-                       printf("Launched max parallel process for the given job description. \nLeftover streams have to wait for current ones to finish.\n"); 
-                       printf("===================================================================\n\n");
+                       fprintf (stderr, "\n===================================================================\n");
+                       fprintf (stderr, "Launched max parallel process for the given job description. \nLeftover streams have to wait for current ones to finish.\n"); 
+                       fprintf (stderr, "===================================================================\n\n");
                     }
                     
                     sleep(1);
@@ -494,7 +691,7 @@ int main (int argc, char *argv[])
                 int pipefd[2];
                 if (pipe(pipefd) == -1)
                 {
-                    printf ("Pipe creation failed\n");
+                    fprintf (stderr, "Pipe creation failed\n");
                     done = 1;
                     ret = -1;
                     break;
@@ -516,7 +713,7 @@ int main (int argc, char *argv[])
                     // run child
                     close (pipefd[0]);
 
-                    ret = launch (pipefd[1], filename, &xrm_transcode_cu_pool_prop, pre_src_cmdline, log_en);
+                    ret = launch (pipefd[1], filename, &xrm_transcode_cu_pool_prop, &pop_dev_list, pre_src_cmdline, log_en);
 
                     done = 1;
                     worker = 0;
@@ -570,25 +767,25 @@ int main (int argc, char *argv[])
         long long end_time = get_time();
 
         // print stats
-        printf("\n===================================================================\n");
+        fprintf (stderr, "\n===================================================================\n");
         if (failed_sources == 0)        
-            printf("All %d source(s) succeeded!\n", succeeded_sources);        
+            fprintf (stderr, "All %d source(s) succeeded!\n", succeeded_sources);        
         else
         {
             for (int i = 0; i < ((failed_sources < MAX_ERRORS) ? failed_sources : MAX_ERRORS); i++)
             {
-                printf("%s failed!\n", failed_filenames[i]);
+                fprintf (stderr, "%s failed!\n", failed_filenames[i]);
                 delete (failed_filenames[i]);
             }
-            printf("%d source(s) succeeded.\n", succeeded_sources);
-            printf("%d source(s) failed!\n", failed_sources);
+            fprintf (stderr, "%d source(s) succeeded.\n", succeeded_sources);
+            fprintf (stderr, "%d source(s) failed!\n", failed_sources);
         }
 
-        printf("===================================================================\n");
+        fprintf (stderr, "===================================================================\n");
 
         long long time = (end_time - start_time) / 1000;
         long long min = time / 60000;
-        printf ("Time taken: %lld min %.3f sec\n\n", min, (time - (min * 60000.0)) / 1000.0);
+        fprintf (stderr, "Time taken: %lld min %.3f sec\n\n", min, (time - (min * 60000.0)) / 1000.0);
     }
 
     // clean up
