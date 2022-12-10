@@ -32,6 +32,7 @@
 #include "parser.h"
 
 #define MAX_ERRORS 4096
+#define CMD_SIZE   512
 
 
 typedef struct CleanupInfo
@@ -90,7 +91,7 @@ static void* cleanup_pid (void* arg)
 }
 
 // separate a command line string into an array of arguments
-int separate_cmdline (char* cmdline, char* cmd_params[256])
+int separate_cmdline (char* cmdline, char* cmd_params[CMD_SIZE])
 {
     int index = 0; // index of a command line we are reading from
     int param = 0; // current parameter
@@ -510,10 +511,11 @@ int launch (int pipefd, char* source_filename, xrmCuPoolPropertyV2* xrm_transcod
     }
 
      // separate command line into array of arguments
-     char* cmd_params[256];
+     /* Need to dynamically calculate size of parameters */
+     char* cmd_params[CMD_SIZE];
      if (separate_cmdline (cmdline_test, cmd_params))
          return -1;
-    char cmd[256];
+    char cmd[CMD_SIZE];
     strcpy (cmd, cmd_params[0]);
     const char* file = strrchr (cmd, '/');
     if (file)
